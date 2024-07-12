@@ -1,0 +1,32 @@
+[package]
+name = "rrr-make"
+description = "A command-line utility for the creation of Recursive Record Registries"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rrr_make"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rrr_make"
+path = "src/bin.rs"
+
+[dependencies]
+aes-gcm = { version = "0.10.3", features = ["std"] }
+chrono = { version = "0.4", features = ["arbitrary"] }
+clap = { version = "4.5", features = ["derive"] }
+color-eyre = "0.6.3"
+ed25519-dalek = { version = "2.1.1", features = ["rand_core", "pem"] }
+futures = "0.3.30"
+rrr = { git = "https://github.com/recursive-record-registry/rrr.git" }
+serde = { version = "1.0.203", features = ["derive"] }
+serde_bytes = "0.11.14"
+serde_with = "3.8.1"
+tokio = { version = "1.37", features = ["full"] }
+toml = { version = "0.8.14", features = ["preserve_order"] }
+tracing = "0.1.40"
+
+[dev-dependencies]
+tempfile = "3.10.1"
+tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
