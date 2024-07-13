@@ -1,10 +1,10 @@
 use aes_gcm::aead::OsRng;
+use color_eyre::Result;
 use ed25519_dalek::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
 use rrr::crypto::kdf::hkdf::HkdfParams;
 use rrr::crypto::kdf::KdfAlgorithm;
 use rrr::crypto::password_hash::{argon2::Argon2Params, PasswordHashAlgorithm};
 use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
-use rrr::error::{Error, Result};
 use rrr::registry::{
     ConfigParam, OutputLengthInBytes, RegistryConfig, RegistryConfigHash, RegistryConfigKdf,
     SuccessionNonceLengthInBytes,
@@ -23,6 +23,8 @@ use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
 };
+
+use crate::error::Error;
 
 use super::record::{OwnedRecord, OwnedRecordConfig, OwnedRecordMetadata};
 
@@ -105,7 +107,8 @@ impl OwnedRegistry {
                     if dir_entries.next_entry().await?.is_some() {
                         return Err(Error::RegistryAlreadyExists {
                             path: directory_path,
-                        });
+                        }
+                        .into());
                     }
                 }
             }

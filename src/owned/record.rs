@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
+use color_eyre::Result;
 use futures::future::{BoxFuture, FutureExt};
-use rrr::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::{
@@ -10,6 +10,8 @@ use std::{
     str::FromStr,
 };
 use tokio::io::{AsyncRead, AsyncWriteExt};
+
+use crate::error::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OwnedRecordMetadata {
@@ -53,7 +55,8 @@ impl OwnedRecord {
                         return Err(Error::DuplicateSuccessiveRecord {
                             parent: directory_path.as_ref().to_owned(),
                             name: successive_record.config.name.to_vec(),
-                        });
+                        }
+                        .into());
                     }
                 }
             }

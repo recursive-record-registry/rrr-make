@@ -263,26 +263,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
-name = "bytemuck"
-version = "1.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b236fc92302c97ed75b38da1f4917b5cdda4984745740f153a5d3059e48d725e"
-dependencies = [
- "bytemuck_derive",
-]
-
-[[package]]
-name = "bytemuck_derive"
-version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ee891b04274a59bd38b412188e24b849617b2e45a0fd8d057deb63e7403761b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.71",
-]
-
-[[package]]
 name = "bytes"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1400,7 +1380,6 @@ dependencies = [
  "async-fd-lock",
  "async-scoped",
  "async-trait",
- "bytemuck",
  "casey",
  "chrono",
  "ciborium-io",
@@ -1419,14 +1398,11 @@ dependencies = [
  "proptest-arbitrary-interop",
  "proptest-derive",
  "serde",
- "serde_bytes",
  "serde_with",
  "sha2",
- "static_assertions",
  "thiserror",
  "tokio",
  "tokio-util",
- "toml",
  "tracing",
  "zeroize",
 ]
@@ -1446,6 +1422,7 @@ dependencies = [
  "serde_bytes",
  "serde_with",
  "tempfile",
+ "thiserror",
  "tokio",
  "toml",
  "tracing",
@@ -1661,12 +1638,6 @@ dependencies = [
  "base64ct",
  "der",
 ]
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
