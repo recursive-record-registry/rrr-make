@@ -1,10 +1,14 @@
 use chrono::{DateTime, Utc};
-use color_eyre::Result;
+use color_eyre::{
+    eyre::{bail, OptionExt},
+    Result,
+};
 use futures::future::{BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::{
     collections::HashSet,
+    ffi::OsString,
     fmt::Debug,
     path::{Path, PathBuf},
     str::FromStr,
@@ -128,7 +132,7 @@ impl OwnedRecord {
     pub async fn read(&self) -> Result<Option<impl AsyncRead>> {
         match tokio::fs::OpenOptions::new()
             .read(true)
-            .open(self.get_data_path())
+            .open(self.get_data_path().await?)
             .await
         {
             Ok(file) => Ok(Some(file)),
@@ -145,8 +149,26 @@ impl OwnedRecord {
         Self::get_config_path_from_record_directory_path(&self.directory_path)
     }
 
-    pub fn get_data_path(&self) -> PathBuf {
-        // TODO: Allow any file extension.
-        self.directory_path.join("data")
+    pub async fn get_data_path(&self) -> Result<PathBuf> {
+        const FILE_STEM_DATA: &str = "data";
+
+        let mut read_dir = tokio::fs::read_dir(&self.directory_path).await?;
+        let mut candidate = None;
+
+        while let Some(dir_entry) = read_dir.next_entry().await? {
+            if dir_entry.file_type().await?.is_file() {
+                let path = dir_entry.path();
+
+                if path.file_stem() == Some(&OsString::from(FILE_STEM_DATA)) {
+                    if candidate.is_none() {
+                        candidate = Some(path);
+                    } else {
+                        bail!("Multiple data files available, but only one may exist");
+                    }
+                }
+            }
+        }
+
+        candidate.ok_or_eyre("No data file found")
     }
 }
