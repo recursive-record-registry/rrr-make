@@ -9,7 +9,7 @@ name = "rrr_make"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rrr_make"
+name = "rrr-make"
 path = "src/bin.rs"
 
 [dependencies]
