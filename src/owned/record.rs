@@ -146,6 +146,7 @@ impl OwnedRecord {
     }
 
     pub fn get_data_path(&self) -> PathBuf {
+        // TODO: Allow any file extension.
         self.directory_path.join("data")
     }
 }
