@@ -10,6 +10,7 @@ use rrr::{
 };
 use tokio::io::AsyncReadExt;
 
+pub mod assets;
 pub mod error;
 pub mod owned;
 

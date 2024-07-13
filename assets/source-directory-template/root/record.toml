@@ -1,0 +1,14 @@
+# The name of the record, used to access the record and its contents.
+#
+# By convention, the root record has an empty name, and it is opened
+# when reading the registry without specifying a record path.
+# It is strongly recommended **not** to change the name of the root record.
+name = []
+
+# Every record has metadata fields that can be customized.
+# Some fields are treated specially by RRR browser tools.
+[metadata]
+# Time and date which this record was supposedly created at.
+# This doesn't have to be the "real" time and date the file on your computer was created,
+# rather, it can be chosen by the author.
+created_at = 1970-01-01T00:00:00Z

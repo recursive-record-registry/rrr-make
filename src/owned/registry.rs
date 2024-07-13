@@ -17,16 +17,16 @@ use std::{
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
-    str::FromStr,
 };
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
+use crate::assets;
 use crate::error::Error;
 
-use super::record::{OwnedRecord, OwnedRecordConfig, OwnedRecordMetadata};
+use super::record::OwnedRecord;
 
 /// Represents a registry with cryptographic credentials for editing.
 #[serde_as]
@@ -130,6 +130,11 @@ impl OwnedRegistry {
 
         // TODO: Unify with save_config
         tokio::fs::create_dir_all(&directory_path).await?;
+        tokio::task::spawn_blocking({
+            let directory_path = directory_path.clone();
+            move || assets::SOURCE_DIRECTORY_TEMPLATE.extract(directory_path)
+        })
+        .await??;
         tokio::fs::create_dir(&signing_keys_directory_absolute).await?;
 
         let mut csprng = OsRng;
@@ -178,21 +183,6 @@ impl OwnedRegistry {
         };
 
         registry.save_config(overwrite).await?;
-
-        let default_root_record = OwnedRecord {
-            directory_path: registry.get_root_record_path(),
-            config: OwnedRecordConfig {
-                name: Default::default(),
-                metadata: OwnedRecordMetadata {
-                    created_at: Some(
-                        toml::value::Datetime::from_str("1970-01-01T00:00:00Z").unwrap(),
-                    ),
-                },
-            },
-            successive_records: Default::default(),
-        };
-
-        default_root_record.save().await?;
 
         Ok(registry)
     }

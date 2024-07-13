@@ -15,4 +15,11 @@ async fn owned_registry() {
     let owned_registry_loaded = OwnedRegistry::load(registry_dir.path()).await.unwrap();
 
     assert_eq!(owned_registry_loaded, owned_registry);
+
+    let root_record = owned_registry_loaded.load_root_record().await.unwrap();
+
+    assert_eq!(root_record.successive_records.len(), 1);
+    assert!(root_record.successive_records[0]
+        .successive_records
+        .is_empty());
 }

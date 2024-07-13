@@ -1,0 +1,3 @@
+It works!
+
+Welcome to an example Recursive Record Registry. Feel free to customize it to your needs!

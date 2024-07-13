@@ -22,6 +22,7 @@ chrono = { version = "0.4", features = ["arbitrary"] }
 color-eyre = "0.6.3"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "pem"] }
 futures = "0.3.30"
+include_dir = { version = "0.7.4", features = ["nightly"] }
 rrr = { git = "https://github.com/recursive-record-registry/rrr.git" }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_bytes = "0.11.14"
