@@ -6,8 +6,7 @@ use rrr::crypto::kdf::KdfAlgorithm;
 use rrr::crypto::password_hash::{argon2::Argon2Params, PasswordHashAlgorithm};
 use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
 use rrr::registry::{
-    ConfigParam, OutputLengthInBytes, RegistryConfig, RegistryConfigHash, RegistryConfigKdf,
-    SuccessionNonceLengthInBytes,
+    RegistryConfig, RegistryConfigHash, RegistryConfigKdf,
 };
 use rrr::utils::serde::Secret;
 use rrr::{crypto::encryption::EncryptionAlgorithm, record::RecordKey};
@@ -45,7 +44,7 @@ impl OwnedRegistryConfig {
     pub fn get_root_record_key(&self) -> RecordKey {
         RecordKey {
             record_name: Default::default(),
-            predecessor_nonce: self.kdf.get_root_record_predecessor_nonce(),
+            predecessor_nonce: self.kdf.get_root_record_predecessor_nonce().clone(),
         }
     }
 }
@@ -160,18 +159,13 @@ impl OwnedRegistry {
 
         let config = OwnedRegistryConfig {
             hash: RegistryConfigHash {
-                algorithm: PasswordHashAlgorithm::Argon2(
-                    Argon2Params::default_with_random_pepper_of_recommended_length(&mut csprng),
-                ),
-                output_length_in_bytes: ConfigParam::<OutputLengthInBytes>::try_from(32).unwrap(),
+                algorithm: PasswordHashAlgorithm::Argon2(Argon2Params::default()),
+                output_length_in_bytes: Default::default(),
             },
-            kdf: RegistryConfigKdf {
-                algorithm: KdfAlgorithm::Hkdf(HkdfParams::default()),
-                succession_nonce_length_in_bytes:
-                    ConfigParam::<SuccessionNonceLengthInBytes>::try_from(32).unwrap(),
-                file_name_length_in_bytes: ConfigParam::try_from(8).unwrap(),
-            },
-            encryption_algorithm: EncryptionAlgorithm::A256GCM,
+            kdf: RegistryConfigKdf::builder()
+                .with_algorithm(KdfAlgorithm::Hkdf(HkdfParams::default()))
+                .build_with_random_root_predecessor_nonce(csprng)?,
+            encryption_algorithm: EncryptionAlgorithm::Aes256Gcm,
             root_record_path: PathBuf::from("root"),
             signing_key_paths,
         };

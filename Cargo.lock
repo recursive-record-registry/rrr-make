@@ -1393,7 +1393,6 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 [[package]]
 name = "rrr"
 version = "0.1.0"
-source = "git+https://github.com/recursive-record-registry/rrr.git?rev=5f11db585aabb6a6feaeb9fcd8ec79b93b9854f9#5f11db585aabb6a6feaeb9fcd8ec79b93b9854f9"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -1414,6 +1413,7 @@ dependencies = [
  "proptest",
  "proptest-arbitrary-interop",
  "proptest-derive",
+ "rand",
  "serde",
  "serde_with",
  "sha2",

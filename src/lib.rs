@@ -61,10 +61,10 @@ pub fn make_recursive<'a>(
                 &input_registry.signing_keys,
                 &hashed_key,
                 &output_record,
-                0.into(),                            // TODO
-                0,                                   // TODO
-                &[],                                 // TODO
-                Some(&EncryptionAlgorithm::A256GCM), // TODO
+                0.into(),                              // TODO
+                0,                                     // TODO
+                &[],                                   // TODO
+                Some(&EncryptionAlgorithm::Aes256Gcm), // TODO
                 force,
             )
             .await?;

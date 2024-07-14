@@ -53,7 +53,8 @@ impl Command {
                 let root_predecessor_nonce = output_registry
                     .config
                     .kdf
-                    .get_root_record_predecessor_nonce();
+                    .get_root_record_predecessor_nonce()
+                    .clone();
 
                 // TODO: Verify target registry keys
 
