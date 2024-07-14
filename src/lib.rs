@@ -4,9 +4,9 @@ use record::OwnedRecord;
 use registry::OwnedRegistry;
 use rrr::{
     crypto::encryption::EncryptionAlgorithm,
-    record::{Record, RecordKey, RecordMetadata, SuccessionNonce},
+    record::{Record, RecordKey, RecordMetadata, RecordName, SuccessionNonce},
     registry::{Registry, WriteLock},
-    serde_utils::BytesOrAscii,
+    utils::serde::BytesOrAscii,
 };
 use tokio::io::AsyncReadExt;
 
@@ -51,7 +51,7 @@ pub fn make_recursive<'a>(
             data: BytesOrAscii(data),
         };
         let key = RecordKey {
-            record_name: input_record.config.name.to_vec(),
+            record_name: RecordName::from(input_record.config.name.to_vec()),
             predecessor_nonce: predecessor_nonce.clone(),
         };
         let hashed_key = key.hash(&input_registry.hash).await?;
@@ -61,7 +61,7 @@ pub fn make_recursive<'a>(
                 &input_registry.signing_keys,
                 &hashed_key,
                 &output_record,
-                0,                                   // TODO
+                0.into(),                            // TODO
                 0,                                   // TODO
                 &[],                                 // TODO
                 Some(&EncryptionAlgorithm::A256GCM), // TODO

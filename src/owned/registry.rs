@@ -9,7 +9,7 @@ use rrr::registry::{
     ConfigParam, OutputLengthInBytes, RegistryConfig, RegistryConfigHash, RegistryConfigKdf,
     SuccessionNonceLengthInBytes,
 };
-use rrr::serde_utils::Secret;
+use rrr::utils::serde::Secret;
 use rrr::{crypto::encryption::EncryptionAlgorithm, record::RecordKey};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -44,7 +44,7 @@ pub struct OwnedRegistryConfig {
 impl OwnedRegistryConfig {
     pub fn get_root_record_key(&self) -> RecordKey {
         RecordKey {
-            record_name: Vec::new(),
+            record_name: Default::default(),
             predecessor_nonce: self.kdf.get_root_record_predecessor_nonce(),
         }
     }
