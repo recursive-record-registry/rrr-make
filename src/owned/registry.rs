@@ -5,13 +5,10 @@ use rrr::crypto::kdf::hkdf::HkdfParams;
 use rrr::crypto::kdf::KdfAlgorithm;
 use rrr::crypto::password_hash::{argon2::Argon2Params, PasswordHashAlgorithm};
 use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
-use rrr::registry::{
-    RegistryConfig, RegistryConfigHash, RegistryConfigKdf,
-};
+use rrr::registry::{RegistryConfig, RegistryConfigHash, RegistryConfigKdf};
 use rrr::utils::serde::Secret;
 use rrr::{crypto::encryption::EncryptionAlgorithm, record::RecordKey};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use std::{
     fmt::Debug,
     ops::{Deref, DerefMut},
@@ -24,17 +21,28 @@ use tokio::{
 
 use crate::assets;
 use crate::error::Error;
+use crate::record::{
+    OwnedRecordConfigEncryption, OwnedRecordConfigParameters,
+    OwnedRecordConfigParametersUnresolved,
+};
 
 use super::record::OwnedRecord;
 
 /// Represents a registry with cryptographic credentials for editing.
-#[serde_as]
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OwnedRegistryConfig {
     pub hash: RegistryConfigHash,
     pub kdf: RegistryConfigKdf,
-    pub encryption_algorithm: EncryptionAlgorithm,
+    pub default_record_parameters: OwnedRecordConfigParametersUnresolved,
     pub root_record_path: PathBuf,
+    /// This is where the resulting registry is generated, every time the `make` subcommand is executed.
+    pub staging_directory_path: PathBuf,
+    /// This directory contains all of the published record fragments, separated to directories according
+    /// to the revision they were published in.
+    pub revisions_directory_path: PathBuf,
+    /// Path to a directory where the accumulation of all published revisions is stored.
+    /// This directory contains all the published data of the registry, and can be browsed.
+    pub published_directory_path: PathBuf,
     /// Paths to files with signing keys.
     /// These paths are relative to the directory containing the registry config.
     pub signing_key_paths: Vec<PathBuf>,
@@ -165,7 +173,16 @@ impl OwnedRegistry {
             kdf: RegistryConfigKdf::builder()
                 .with_algorithm(KdfAlgorithm::Hkdf(HkdfParams::default()))
                 .build_with_random_root_predecessor_nonce(csprng)?,
-            encryption_algorithm: EncryptionAlgorithm::Aes256Gcm,
+            default_record_parameters: OwnedRecordConfigParameters {
+                encryption: Some(OwnedRecordConfigEncryption {
+                    algorithm: EncryptionAlgorithm::Aes256Gcm,
+                    segment_padding_to_bytes: 1024, // 1 KiB
+                }),
+            }
+            .into(),
+            staging_directory_path: PathBuf::from("target/staging"),
+            revisions_directory_path: PathBuf::from("target/revisions"),
+            published_directory_path: PathBuf::from("target/published"),
             root_record_path: PathBuf::from("root"),
             signing_key_paths,
         };
@@ -217,12 +234,24 @@ impl OwnedRegistry {
         Self::get_key_path_from_record_directory_path(&self.directory_path, key_path)
     }
 
+    pub fn get_staging_directory_path(&self) -> PathBuf {
+        self.directory_path.join(&self.staging_directory_path)
+    }
+
+    pub fn get_revisions_directory_path(&self) -> PathBuf {
+        self.directory_path.join(&self.revisions_directory_path)
+    }
+
+    pub fn get_published_directory_path(&self) -> PathBuf {
+        self.directory_path.join(&self.published_directory_path)
+    }
+
     fn get_root_record_path(&self) -> PathBuf {
         self.directory_path.join(&self.root_record_path)
     }
 
     pub async fn load_root_record(&self) -> Result<OwnedRecord> {
-        OwnedRecord::load_from_directory(self.get_root_record_path()).await
+        OwnedRecord::load_from_directory(&self.config, self.get_root_record_path()).await
     }
 }
 

@@ -20,10 +20,11 @@ cmd = ["clap", "tracing-error", "tracing-subscriber"]
 aes-gcm = { version = "0.10.3", features = ["std"] }
 chrono = { version = "0.4", features = ["arbitrary"] }
 color-eyre = "0.6.3"
+derive_more = "0.99.17"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "pem"] }
 futures = "0.3.30"
 include_dir = { version = "0.7.4", features = ["nightly"] }
-rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "782db4752ee74fc56199151e5b261f33b32cfbfa" }
+rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "826ae06afaf769a64bdb215ba507e69f78fc1a0e" }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_bytes = "0.11.14"
 serde_with = "3.8.1"

@@ -3,8 +3,9 @@ use futures::{future::BoxFuture, FutureExt};
 use record::OwnedRecord;
 use registry::OwnedRegistry;
 use rrr::{
-    crypto::encryption::EncryptionAlgorithm,
-    record::{Record, RecordKey, RecordMetadata, RecordName, SuccessionNonce},
+    record::{
+        segment::SegmentEncryption, Record, RecordKey, RecordMetadata, RecordName, SuccessionNonce,
+    },
     registry::{Registry, WriteLock},
     utils::serde::BytesOrAscii,
 };
@@ -13,6 +14,7 @@ use tokio::io::AsyncReadExt;
 pub mod assets;
 pub mod error;
 pub mod owned;
+pub mod util;
 
 #[cfg(feature = "cmd")]
 pub mod cmd;
@@ -61,10 +63,16 @@ pub fn make_recursive<'a>(
                 &input_registry.signing_keys,
                 &hashed_key,
                 &output_record,
-                0.into(),                              // TODO
-                0,                                     // TODO
-                &[],                                   // TODO
-                Some(&EncryptionAlgorithm::Aes256Gcm), // TODO
+                0.into(), // TODO
+                0,        // TODO
+                &[],      // TODO
+                input_record
+                    .config
+                    .parameters
+                    .encryption
+                    .as_ref()
+                    .map(SegmentEncryption::from)
+                    .as_ref(),
                 force,
             )
             .await?;

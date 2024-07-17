@@ -16,3 +16,10 @@ Launch it by running the following:
     # On Unix
     target/release/rrr-make
     ```
+
+## TODO
+* [ ] Better error reporting for incomplete record parameters
+* [ ] Output registry staging
+    * [ ] Checking whether the stored record is identical to the to-be-written one
+    * [ ] `published` directory
+    * [ ] `revisions` directory

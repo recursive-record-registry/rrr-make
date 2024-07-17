@@ -21,12 +21,12 @@ pub enum Command {
         /// Path to a source directory.
         #[arg(short, long, default_value = ".")]
         input_directory: PathBuf,
-        /// Path to a directory in which to put the RRR registry.
-        #[arg(short, long, default_value = "target")]
-        output_directory: PathBuf,
         /// Force existing files to be overwritten.
         #[arg(short, long, default_value = "false")]
         force: bool,
+        /// Whether a new revision should be created in the published directory.
+        #[arg(long, default_value = "false")]
+        publish: bool,
     },
 }
 
@@ -39,13 +39,13 @@ impl Command {
             }
             Command::Make {
                 input_directory,
-                output_directory,
                 force,
+                publish,
             } => {
                 let input_registry = OwnedRegistry::load(input_directory).await?;
                 let input_root_record = input_registry.load_root_record().await?;
                 let mut output_registry = Registry::create(
-                    output_directory,
+                    input_registry.get_staging_directory_path(),
                     RegistryConfig::from(&input_registry),
                     force,
                 )
