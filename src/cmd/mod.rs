@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use crate::{make_recursive, registry::OwnedRegistry};
 use clap::Parser;
 use color_eyre::eyre::Result;
-use rrr::registry::{Registry, RegistryConfig};
+use rrr::{
+    registry::{Registry, RegistryConfig},
+    utils::fd_lock::WriteLock,
+};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -42,7 +45,7 @@ impl Command {
                 force,
                 publish,
             } => {
-                let input_registry = OwnedRegistry::load(input_directory).await?;
+                let input_registry = OwnedRegistry::<WriteLock>::load(input_directory).await?;
                 let input_root_record = input_registry.load_root_record().await?;
                 let mut output_registry = Registry::create(
                     input_registry.get_staging_directory_path(),

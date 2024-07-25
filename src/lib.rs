@@ -6,8 +6,11 @@ use rrr::{
     record::{
         segment::SegmentEncryption, Record, RecordKey, RecordMetadata, RecordName, SuccessionNonce,
     },
-    registry::{Registry, WriteLock},
-    utils::serde::BytesOrAscii,
+    registry::Registry,
+    utils::{
+        fd_lock::{FileLock, WriteLock},
+        serde::BytesOrAscii,
+    },
 };
 use tokio::io::AsyncReadExt;
 
@@ -21,9 +24,9 @@ pub mod cmd;
 
 pub use owned::*;
 
-pub fn make_recursive<'a>(
+pub fn make_recursive<'a, L: FileLock>(
     output_registry: &'a mut Registry<WriteLock>,
-    input_registry: &'a OwnedRegistry,
+    input_registry: &'a OwnedRegistry<L>,
     input_record: &'a OwnedRecord,
     predecessor_nonce: &'a SuccessionNonce,
     force: bool,

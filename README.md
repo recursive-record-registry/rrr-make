@@ -18,6 +18,7 @@ Launch it by running the following:
     ```
 
 ## TODO
+* [ ] Option to inherit parameters from predecessor
 * [ ] Better error reporting for incomplete record parameters
 * [ ] Output registry staging
     * [ ] Checking whether the stored record is identical to the to-be-written one

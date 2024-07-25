@@ -1,4 +1,3 @@
-
 use ::serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -44,6 +43,8 @@ where
     }
 }
 
+// TODO/FIXME: This will parse for `none: false` as well.
+//             Ideally, we would use something like `= "none"`.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ExplicitNone {
     none: bool,

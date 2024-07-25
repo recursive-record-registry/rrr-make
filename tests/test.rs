@@ -11,6 +11,9 @@ async fn owned_registry() {
 
     let owned_registry = OwnedRegistry::generate(registry_dir.path(), false)
         .await
+        .unwrap()
+        .lock_read()
+        .await
         .unwrap();
     let owned_registry_loaded = OwnedRegistry::load(registry_dir.path()).await.unwrap();
 
