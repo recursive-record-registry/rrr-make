@@ -5,6 +5,11 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 async fn setup_tracing() -> Result<()> {
+    // Enable logging by default.
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", format!("{}=info", env!("CARGO_CRATE_NAME")));
+    }
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(ErrorLayer::default())

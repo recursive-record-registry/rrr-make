@@ -204,7 +204,6 @@ impl OwnedRecord {
             let config = config_unresolved
                 .try_resolve_with(registry_config.default_record_parameters.clone() /* TODO: cloning seems excessive */)
                 .map_err(|_| eyre!("incomplete record parameters"))?;
-            dbg!(&config);
             let mut successive_records_stream = tokio::fs::read_dir(&directory_path).await?;
             let mut successive_records = Vec::new();
             let mut successive_record_names = HashSet::new();
