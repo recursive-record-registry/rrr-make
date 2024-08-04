@@ -27,7 +27,7 @@ use crate::record::{
     OwnedRecordConfigEncryption, OwnedRecordConfigParameters, OwnedRecordConfigParametersUnresolved,
 };
 
-use super::record::OwnedRecord;
+use super::record::{OwnedRecord, SplittingStrategy};
 
 /// Represents a registry with cryptographic credentials for editing.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -276,6 +276,7 @@ impl OwnedRegistry<WriteLock> {
                 .with_algorithm(KdfAlgorithm::Hkdf(HkdfParams::default()))
                 .build_with_random_root_predecessor_nonce(csprng)?,
             default_record_parameters: OwnedRecordConfigParameters {
+                splitting_strategy: SplittingStrategy::Fill {},
                 encryption: Some(OwnedRecordConfigEncryption {
                     algorithm: EncryptionAlgorithm::Aes256Gcm,
                     segment_padding_to_bytes: 1024, // 1 KiB

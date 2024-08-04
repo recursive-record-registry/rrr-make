@@ -1,3 +1,5 @@
+#![feature(array_windows)]
+
 use chrono::DateTime;
 use color_eyre::eyre::OptionExt;
 use futures::{future::BoxFuture, FutureExt};
@@ -46,6 +48,7 @@ pub async fn save_record_versioned<L: FileLock>(
     record_path: &RecordPath,
     output_record: &Record,
     hashed_key: &HashedRecordKey,
+    split_at: &[usize],
     stats: &mut MakeRecursiveStatistics,
 ) -> color_eyre::Result<()> {
     let existing_versions = output_registry
@@ -91,7 +94,7 @@ pub async fn save_record_versioned<L: FileLock>(
                     output_record,
                     new_version,
                     max_collision_resolution_attempts,
-                    &[], // TODO
+                    split_at,
                     encryption.as_ref(),
                     false,
                 )
@@ -113,7 +116,7 @@ pub async fn save_record_versioned<L: FileLock>(
                 output_record,
                 0.into(), // This is the first version of the record, as no other versions have been found.
                 max_collision_resolution_attempts,
-                &[], // TODO
+                split_at,
                 encryption.as_ref(),
                 false,
             )
@@ -138,14 +141,12 @@ pub fn make_recursive<'a, L: FileLock>(
     stats: &'a mut MakeRecursiveStatistics,
 ) -> BoxFuture<'a, color_eyre::Result<()>> {
     async move {
-        let mut data = Vec::new();
-
-        input_record
-            .read()
-            .await?
-            .expect("Data not found.")
-            .read_to_end(&mut data)
-            .await?;
+        let mut read_result = input_record.read().await?.expect("Data not found.");
+        let data = {
+            let mut data = Vec::new();
+            read_result.read.read_to_end(&mut data).await?;
+            data
+        };
 
         let output_record = Record {
             metadata: {
@@ -181,6 +182,8 @@ pub fn make_recursive<'a, L: FileLock>(
             &record_path,
             &output_record,
             &hashed_key,
+            // TODO: Handle `SplittingStrategy::Fill`
+            read_result.split_at.as_deref().unwrap_or_default(),
             stats,
         )
         .await?;

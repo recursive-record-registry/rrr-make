@@ -1,0 +1,12 @@
+# Example of a sub-record. A record can have any number of sub-records.
+# They are stored in arbitrarily-named directories in the directory of the parent record.
+
+# A very secret name of the record. This is used to access the record when browsing your registry.
+name = "manual-split"
+
+[metadata]
+created_at = 1970-01-01T00:00:00Z
+
+# Use the manual splitting strategy, which creates a separate record fragment file for each indexed
+# input data file with filename in the `data.[index].[ext]` format, e.g. `data.0.txt`.
+[splitting_strategy.manual]

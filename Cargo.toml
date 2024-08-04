@@ -24,7 +24,7 @@ derive_more = "0.99.17"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "pem"] }
 futures = "0.3.30"
 include_dir = { version = "0.7.4", features = ["nightly"] }
-rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "fbdd4c2953f78796b85914162b0ec592e8d2e5b6" }
+rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "f2dfeeba77a386d05a7182584a32c508aa831567" }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_bytes = "0.11.14"
 serde_with = "3.8.1"

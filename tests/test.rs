@@ -21,7 +21,7 @@ async fn owned_registry() {
 
     let root_record = owned_registry_loaded.load_root_record().await.unwrap();
 
-    assert_eq!(root_record.successive_records.len(), 1);
+    assert_eq!(root_record.successive_records.len(), 2);
     assert!(root_record.successive_records[0]
         .successive_records
         .is_empty());
