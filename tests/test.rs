@@ -26,3 +26,27 @@ async fn owned_registry() {
         .successive_records
         .is_empty());
 }
+
+#[cfg(feature = "cmd")]
+#[tokio::test]
+#[traced_test]
+async fn new_registry() {
+    use rrr_make::cmd::Command;
+
+    let registry_dir = tempdir().unwrap();
+    Command::New {
+        directory: registry_dir.path().into(),
+        force: false,
+    }
+    .process()
+    .await
+    .unwrap();
+    Command::Make {
+        input_directory: registry_dir.path().into(),
+        publish: false,
+        force: false,
+    }
+    .process()
+    .await
+    .unwrap();
+}

@@ -36,7 +36,7 @@ pub enum Command {
 
 impl Command {
     pub async fn process(self) -> Result<()> {
-        match Command::parse() {
+        match self {
             Command::New { directory, force } => {
                 OwnedRegistry::generate(&directory, force).await.unwrap();
                 println!("New registry successfully generated in {directory:?}.");

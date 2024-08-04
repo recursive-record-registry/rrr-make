@@ -26,4 +26,4 @@ jobs:
     - name: Build benchmarks
       run: cargo check --benches
     - name: Run tests
-      run: cargo test --release
+      run: cargo test --release --all-features
