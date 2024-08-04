@@ -24,13 +24,15 @@ derive_more = "0.99.17"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "pem"] }
 futures = "0.3.30"
 include_dir = { version = "0.7.4", features = ["nightly"] }
-rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "8c1a37007cbded8c144b6ff566656b104a7d0add" }
+itertools = "0.13.0"
+rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "c5258b43eb1d98a0a8b676d86d6f93b21fb489e2" }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_bytes = "0.11.14"
 serde_with = "3.8.1"
 thiserror = "1.0.62"
 tokio = { version = "1.37", features = ["full"] }
 toml = { version = "0.8.14", features = ["preserve_order"] }
+toml_edit = { version = "0.22.20", features = ["serde"] }
 tracing = "0.1.40"
 # Dependencies of the executable binary
 clap = { version = "4.5", features = ["derive"], optional = true }

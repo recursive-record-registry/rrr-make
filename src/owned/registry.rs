@@ -1,33 +1,33 @@
 use aes_gcm::aead::OsRng;
 use color_eyre::Result;
 use ed25519_dalek::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
-use rrr::crypto::kdf::hkdf::HkdfParams;
-use rrr::crypto::kdf::KdfAlgorithm;
-use rrr::crypto::password_hash::{argon2::Argon2Params, PasswordHashAlgorithm};
+use itertools::Itertools;
 use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
+use rrr::record::RecordKey;
 use rrr::registry::{RegistryConfig, RegistryConfigHash, RegistryConfigKdf};
 use rrr::utils::fd_lock::{FileLock, FileLockType, ReadLock, WriteLock};
 use rrr::utils::serde::Secret;
-use rrr::{crypto::encryption::EncryptionAlgorithm, record::RecordKey};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::SeekFrom;
 use std::{
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
 };
 use tokio::fs::OpenOptions;
+use tokio::io::AsyncSeekExt;
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
 };
+use toml_edit::DocumentMut;
 
 use crate::assets;
 use crate::error::Error;
-use crate::record::{
-    OwnedRecordConfigEncryption, OwnedRecordConfigParameters, OwnedRecordConfigParametersUnresolved,
-};
+use crate::record::OwnedRecordConfigParametersUnresolved;
 
-use super::record::{OwnedRecord, SplittingStrategy};
+use super::record::OwnedRecord;
 
 /// Represents a registry with cryptographic credentials for editing.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -68,6 +68,8 @@ pub struct OwnedRegistry<L: FileLock> {
 }
 
 impl<L: FileLock> OwnedRegistry<L> {
+    const FILE_NAME_CONFIG: &str = "registry.toml";
+
     pub async fn load(directory_path: impl Into<PathBuf>) -> Result<Self> {
         let directory_path = directory_path.into();
         let config_path = Self::get_config_path_from_registry_directory_path(&directory_path);
@@ -117,6 +119,7 @@ impl<L: FileLock> OwnedRegistry<L> {
     pub async fn save_config(&mut self) -> Result<()> {
         let config_string = toml::to_string_pretty(&self.config)?;
 
+        self.file_lock.file_mut().seek(SeekFrom::Start(0)).await?;
         self.file_lock
             .file_mut()
             .write_all(config_string.as_bytes())
@@ -126,7 +129,7 @@ impl<L: FileLock> OwnedRegistry<L> {
     }
 
     fn get_config_path_from_registry_directory_path(directory_path: impl AsRef<Path>) -> PathBuf {
-        directory_path.as_ref().join("registry.toml")
+        directory_path.as_ref().join(Self::FILE_NAME_CONFIG)
     }
 
     fn get_config_path(&self) -> PathBuf {
@@ -221,13 +224,11 @@ impl OwnedRegistry<WriteLock> {
             Err(error) => return Err(error.into()),
         }
 
-        let signing_keys_directory_relative = PathBuf::from("keys");
-        let signing_keys_directory_absolute = directory_path.join(&signing_keys_directory_relative);
         let config_path = Self::get_config_path_from_registry_directory_path(&directory_path);
 
         // TODO: Unify with save_config
         tokio::fs::create_dir_all(&directory_path).await?;
-        let file_lock = {
+        let mut file_lock = {
             let open_options = {
                 let mut open_options = OpenOptions::new();
                 open_options.read(true);
@@ -239,65 +240,78 @@ impl OwnedRegistry<WriteLock> {
             };
             WriteLock::lock(&config_path, &open_options).await?
         };
-        tokio::task::spawn_blocking({
-            let directory_path = directory_path.clone();
-            move || assets::SOURCE_DIRECTORY_TEMPLATE.extract(directory_path)
-        })
-        .await??;
-        tokio::fs::create_dir(&signing_keys_directory_absolute).await?;
+
+        {
+            let mut lock_map = HashMap::new();
+            lock_map.insert(PathBuf::from(Self::FILE_NAME_CONFIG), &mut file_lock);
+            assets::extract_with_locks(
+                &assets::SOURCE_DIRECTORY_TEMPLATE,
+                &directory_path,
+                &mut lock_map,
+            )
+            .await?;
+        }
 
         let mut csprng = OsRng;
-        let signing_keys = vec![SigningKey::Ed25519(Secret(SigningKeyEd25519(
-            ed25519_dalek::SigningKey::generate(&mut csprng),
-        )))];
-        let signing_key_paths = {
-            let mut signing_key_paths = Vec::new();
 
-            for signing_key in &signing_keys {
-                let signing_key_path_relative = signing_keys_directory_relative
-                    .join(format!("key_{}.pem", signing_key.key_type_name()));
-                let signing_key_path_absolute = directory_path.join(&signing_key_path_relative);
-                let pem = signing_key.to_pkcs8_pem(LineEnding::default()).unwrap();
-                let mut file = File::create_new(&signing_key_path_absolute).await?;
+        // Patch registry config.
+        let config = {
+            let mut config_string = String::new();
+            file_lock.file_mut().seek(SeekFrom::Start(0)).await?;
+            file_lock
+                .file_mut()
+                .read_to_string(&mut config_string)
+                .await?;
+            let mut config_doc = config_string.parse::<DocumentMut>()?;
+            let root_predecessor_nonce =
+                RegistryConfigKdf::generate_random_root_predecessor_nonce(csprng, None);
+            let root_predecessor_nonce_string =
+                format!("{:02x}", root_predecessor_nonce.iter().format(""));
+            config_doc["kdf"]["root_predecessor_nonce"] =
+                toml_edit::value(root_predecessor_nonce_string);
+            config_string = config_doc.to_string();
 
-                file.write_all(pem.as_bytes()).await?;
-                signing_key_paths.push(signing_key_path_relative);
-            }
+            // Parse patched config
+            let config = toml::from_str::<OwnedRegistryConfig>(&config_string)?;
 
-            signing_key_paths
+            // Store patched config
+            file_lock.file_mut().seek(SeekFrom::Start(0)).await?;
+            file_lock
+                .file_mut()
+                .write_all(config_string.as_bytes())
+                .await?;
+
+            config
         };
 
-        let config = OwnedRegistryConfig {
-            hash: RegistryConfigHash {
-                algorithm: PasswordHashAlgorithm::Argon2(Argon2Params::default()),
-                output_length_in_bytes: Default::default(),
-            },
-            kdf: RegistryConfigKdf::builder()
-                .with_algorithm(KdfAlgorithm::Hkdf(HkdfParams::default()))
-                .build_with_random_root_predecessor_nonce(csprng)?,
-            default_record_parameters: OwnedRecordConfigParameters {
-                splitting_strategy: SplittingStrategy::Fill {},
-                encryption: Some(OwnedRecordConfigEncryption {
-                    algorithm: EncryptionAlgorithm::Aes256Gcm,
-                    segment_padding_to_bytes: 1024, // 1 KiB
-                }),
-            }
-            .into(),
-            staging_directory_path: PathBuf::from("target/staging"),
-            revisions_directory_path: PathBuf::from("target/revisions"),
-            published_directory_path: PathBuf::from("target/published"),
-            root_record_path: PathBuf::from("root"),
-            signing_key_paths,
+        // Generate signing keys.
+        let signing_keys = {
+            let signing_key = SigningKey::Ed25519(Secret(SigningKeyEd25519(
+                ed25519_dalek::SigningKey::generate(&mut csprng),
+            )));
+            let signing_keys_directory_relative = PathBuf::from("keys");
+            let signing_keys_directory_absolute =
+                directory_path.join(&signing_keys_directory_relative);
+
+            tokio::fs::create_dir_all(signing_keys_directory_absolute).await?;
+
+            let signing_key_path_relative = signing_keys_directory_relative
+                .join(format!("key_{}.pem", signing_key.key_type_name()));
+            let signing_key_path_absolute = directory_path.join(&signing_key_path_relative);
+            let pem = signing_key.to_pkcs8_pem(LineEnding::default()).unwrap();
+            let mut file = File::create_new(&signing_key_path_absolute).await?;
+
+            file.write_all(pem.as_bytes()).await?;
+
+            vec![signing_key]
         };
 
-        let mut registry = Self {
+        let registry = Self {
             directory_path,
             config,
             signing_keys,
             file_lock,
         };
-
-        registry.save_config().await?;
 
         Ok(registry)
     }

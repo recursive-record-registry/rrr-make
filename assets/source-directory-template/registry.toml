@@ -1,0 +1,29 @@
+root_record_path = "root"
+staging_directory_path = "target/staging"
+revisions_directory_path = "target/revisions"
+published_directory_path = "target/published"
+signing_key_paths = ['keys/key_ed25519.pem']
+
+[hash]
+output_length_in_bytes = 32
+
+[hash.algorithm.argon2]
+variant = "argon2id"
+m_cost = 1024
+t_cost = 1024
+p_cost = 1
+
+[kdf]
+file_name_length_in_bytes = 8
+file_tag_length_in_bytes = 32
+succession_nonce_length_in_bytes = 32
+root_predecessor_nonce = "PLACEHOLDER"
+
+[kdf.algorithm.hkdf]
+prf = "sha256"
+
+[default_record_parameters.splitting_strategy.fill]
+
+[default_record_parameters.encryption]
+algorithm = "Aes256Gcm"
+segment_padding_to_bytes = 1024
