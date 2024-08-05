@@ -225,13 +225,27 @@ pub struct OwnedRecord {
 impl OwnedRecord {
     pub fn load_from_directory<'a>(
         registry_config: &'a OwnedRegistryConfig,
+        parent_record_config: Option<&'a OwnedRecordConfig>,
         directory_path: impl AsRef<Path> + Send + Sync + 'a,
     ) -> BoxFuture<'a, Result<Self>> {
         async move {
-            let config_unresolved = Self::load_config(&directory_path).await?;
-            let config = config_unresolved
-                .try_resolve_with(registry_config.default_record_parameters.clone() /* TODO: cloning seems excessive */)
-                .map_err(|_| eyre!("incomplete record parameters"))?;
+            // Resolve the incomplete record config.
+            let config = {
+                let fallback_config_parameters = match parent_record_config {
+                    Some(parent_config)
+                        if registry_config.inherit_record_parameters_from_parent =>
+                    {
+                        parent_config.parameters.clone().into()
+                    } // TODO: cloning seems excessive
+                    _ => registry_config.default_record_parameters.clone(), // TODO: cloning seems excessive
+                };
+                let config_unresolved = Self::load_config(&directory_path).await?;
+
+                config_unresolved
+                    .try_resolve_with(fallback_config_parameters)
+                    .map_err(|_| eyre!("incomplete record parameters"))?
+            };
+
             let mut successive_records_stream = tokio::fs::read_dir(&directory_path).await?;
             let mut successive_records = Vec::new();
             let mut successive_record_names = HashSet::new();
@@ -241,6 +255,7 @@ impl OwnedRecord {
                     let successive_record_directory = entry.path();
                     let successive_record = OwnedRecord::load_from_directory(
                         registry_config,
+                        Some(&config),
                         &successive_record_directory,
                     )
                     .await?;

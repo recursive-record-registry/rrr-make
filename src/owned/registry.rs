@@ -34,6 +34,9 @@ use super::record::OwnedRecord;
 pub struct OwnedRegistryConfig {
     pub hash: RegistryConfigHash,
     pub kdf: RegistryConfigKdf,
+    /// Whether record's parameters should be inherited from (combined with) the parent record, rather
+    /// than the default record parameters (`default_record_parameters`) in the registry config.
+    pub inherit_record_parameters_from_parent: bool,
     pub default_record_parameters: OwnedRecordConfigParametersUnresolved,
     pub root_record_path: PathBuf,
     /// This is where the resulting registry is generated, every time the `make` subcommand is executed.
@@ -164,7 +167,7 @@ impl<L: FileLock> OwnedRegistry<L> {
     }
 
     pub async fn load_root_record(&self) -> Result<OwnedRecord> {
-        OwnedRecord::load_from_directory(&self.config, self.get_root_record_path()).await
+        OwnedRecord::load_from_directory(&self.config, None, self.get_root_record_path()).await
     }
 }
 

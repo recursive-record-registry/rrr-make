@@ -68,6 +68,7 @@ async fn new_registry_config() {
                     .clone(),
             )
             .unwrap(),
+        inherit_record_parameters_from_parent: false,
         default_record_parameters: OwnedRecordConfigParameters {
             splitting_strategy: SplittingStrategy::Fill {},
             encryption: Some(OwnedRecordConfigEncryption {

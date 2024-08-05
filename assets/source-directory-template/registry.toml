@@ -3,6 +3,7 @@ staging_directory_path = "target/staging"
 revisions_directory_path = "target/revisions"
 published_directory_path = "target/published"
 signing_key_paths = ['keys/key_ed25519.pem']
+inherit_record_parameters_from_parent = false
 
 [hash]
 output_length_in_bytes = 32
