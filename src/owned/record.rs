@@ -123,7 +123,7 @@ impl From<OwnedRecordConfigParameters> for OwnedRecordConfigParametersUnresolved
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OwnedRecordConfigUnresolved {
     pub name: ByteBuf,
     pub metadata: OwnedRecordMetadata,

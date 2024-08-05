@@ -1,4 +1,7 @@
+use std::marker::PhantomData;
+
 use ::serde::{Deserialize, Serialize};
+use serde::de::{Unexpected, Visitor};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged)]
@@ -43,16 +46,64 @@ where
     }
 }
 
-// TODO/FIXME: This will parse for `none: false` as well.
-//             Ideally, we would use something like `= "none"`.
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+/// Serializes into/Deserializes from the string `"none"`.
+/// Intentionally not constructible, only to be used as part of [`ExplicitOption`].
+#[derive(Debug, PartialEq, Eq)]
 pub struct ExplicitNone {
-    none: bool,
+    private: PhantomData<()>,
+}
+
+impl ExplicitNone {
+    const VALUE: &str = "none";
+}
+
+impl Serialize for ExplicitNone {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        Self::VALUE.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExplicitNone {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ExplicitNoneVisitor;
+
+        impl<'de> Visitor<'de> for ExplicitNoneVisitor {
+            type Value = ExplicitNone;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "the string {:?}", ExplicitNone::VALUE)
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v == ExplicitNone::VALUE {
+                    Ok(ExplicitNone::new())
+                } else {
+                    Err(serde::de::Error::invalid_value(
+                        Unexpected::Str(v),
+                        &ExplicitNone::VALUE,
+                    ))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(ExplicitNoneVisitor)
+    }
 }
 
 impl ExplicitNone {
     fn new() -> Self {
-        Self { none: true }
+        Self {
+            private: PhantomData,
+        }
     }
 }
 
@@ -61,19 +112,25 @@ pub type DoubleOption<T> = Option<ExplicitOption<T>>;
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Debug;
-
-    use serde::{Deserialize, Serialize};
-
-    use crate::util::serde::ExplicitNone;
+    use crate::util::serde::DoubleOption;
 
     use super::ExplicitOption;
+    use serde::{Deserialize, Serialize};
+    use std::fmt::Debug;
 
-    fn validate_serde_of<T: PartialEq + Debug + Serialize + for<'a> Deserialize<'a>>(original: T) {
+    fn validate_serde_of<T: PartialEq + Debug + Serialize + for<'a> Deserialize<'a>>(
+        original: T,
+        expected_serialized: Option<&str>,
+    ) {
         let serialized = toml::to_string(&original).unwrap();
 
         dbg!(&original);
         dbg!(&serialized);
+        dbg!(&expected_serialized);
+
+        if let Some(expected_serialized) = expected_serialized {
+            assert_eq!(serialized, expected_serialized);
+        }
 
         let deserialized = toml::from_str::<T>(&serialized).unwrap();
 
@@ -82,21 +139,55 @@ mod tests {
 
     #[test]
     fn explicit_option_toml() {
-        validate_serde_of(ExplicitNone::new());
-        assert_eq!(
-            &toml::to_string(&ExplicitNone::new()).unwrap(),
-            "none = true\n"
-        );
+        #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+        struct RootExplicit<T> {
+            optional_field: ExplicitOption<T>,
+        }
+
+        #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+        struct RootDouble<T> {
+            optional_field: DoubleOption<T>,
+        }
 
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
         struct Struct {
             hello: String,
         }
 
-        validate_serde_of(ExplicitOption::<Struct>::default());
-        validate_serde_of(ExplicitOption::Some(Struct {
-            hello: "World".to_string(),
-        }));
+        validate_serde_of(
+            RootExplicit {
+                optional_field: ExplicitOption::<Struct>::default(),
+            },
+            Some("optional_field = \"none\"\n"),
+        );
+        validate_serde_of(
+            RootExplicit {
+                optional_field: ExplicitOption::Some(Struct {
+                    hello: "World".to_string(),
+                }),
+            },
+            None,
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: DoubleOption::<Struct>::None,
+            },
+            Some(""),
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: Some(ExplicitOption::<Struct>::default()),
+            },
+            Some("optional_field = \"none\"\n"),
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: Some(ExplicitOption::Some(Struct {
+                    hello: "World".to_string(),
+                })),
+            },
+            None,
+        );
 
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
         enum Enum {
@@ -104,8 +195,47 @@ mod tests {
             World(String),
         }
 
-        validate_serde_of(ExplicitOption::<Enum>::default());
-        validate_serde_of(ExplicitOption::Some(Enum::Hello(0)));
-        validate_serde_of(ExplicitOption::Some(Enum::World("World".to_string())));
+        validate_serde_of(
+            RootExplicit {
+                optional_field: ExplicitOption::<Enum>::default(),
+            },
+            Some("optional_field = \"none\"\n"),
+        );
+        validate_serde_of(
+            RootExplicit {
+                optional_field: ExplicitOption::Some(Enum::Hello(0)),
+            },
+            None,
+        );
+        validate_serde_of(
+            RootExplicit {
+                optional_field: ExplicitOption::Some(Enum::World("World".to_string())),
+            },
+            None,
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: DoubleOption::<Enum>::None,
+            },
+            Some(""),
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: Some(ExplicitOption::<Enum>::default()),
+            },
+            Some("optional_field = \"none\"\n"),
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: Some(ExplicitOption::Some(Enum::Hello(0))),
+            },
+            None,
+        );
+        validate_serde_of(
+            RootDouble {
+                optional_field: Some(ExplicitOption::Some(Enum::World("World".to_string()))),
+            },
+            None,
+        );
     }
 }
