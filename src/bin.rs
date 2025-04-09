@@ -5,7 +5,7 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 async fn setup_tracing() -> Result<()> {
-    let log_directives = std::env::var("RUST_LOG")
+    let log_directives = std::env::var(format!("{}_LOG", env!("CARGO_CRATE_NAME").to_uppercase()))
         .ok()
         .unwrap_or_else(|| format!("{}=info", env!("CARGO_CRATE_NAME")));
 
