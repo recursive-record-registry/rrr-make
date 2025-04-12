@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use color_eyre::{
-    eyre::{bail, eyre},
     Result,
+    eyre::{bail, eyre},
 };
 use core::str;
 use futures::future::{BoxFuture, FutureExt};
@@ -360,7 +360,7 @@ impl OwnedRecord {
                 .await?;
             if let Some(split_at) = split_at.as_mut() {
                 let metadata = file_first.metadata().await?;
-                split_at.push(metadata.len() as usize);
+                split_at.push(split_at.last().copied().unwrap_or(0) + metadata.len() as usize);
             }
             Box::new(file_first)
         };
@@ -372,7 +372,7 @@ impl OwnedRecord {
                 .await?;
             if let Some(split_at) = split_at.as_mut() {
                 let metadata = file.metadata().await?;
-                split_at.push(metadata.len() as usize);
+                split_at.push(split_at.last().copied().unwrap_or(0) + metadata.len() as usize);
             }
             read = Box::new(read.chain(file));
         }
@@ -444,7 +444,9 @@ impl OwnedRecord {
         for [(index_a, path_a), (index_b, path_b)] in results.array_windows::<2>() {
             if index_a == index_b {
                 if let Some(index) = index_a {
-                    bail!("multiple (conflicting) record data files with index {index} exist: {path_a:?}, {path_b:?}");
+                    bail!(
+                        "multiple (conflicting) record data files with index {index} exist: {path_a:?}, {path_b:?}"
+                    );
                 } else {
                     bail!("multiple (conflicting) record data files exist: {path_a:?}, {path_b:?}");
                 }
