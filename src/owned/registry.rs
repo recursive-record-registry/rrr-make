@@ -1,7 +1,7 @@
-use aes_gcm::aead::OsRng;
 use color_eyre::Result;
-use ed25519_dalek::pkcs8::{spki::der::pem::LineEnding, DecodePrivateKey, EncodePrivateKey};
+use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey, spki::der::pem::LineEnding};
 use itertools::Itertools;
+use rand::{rand_core::UnwrapErr, rngs::SysRng};
 use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
 use rrr::record::RecordKey;
 use rrr::registry::{RegistryConfig, RegistryConfigHash, RegistryConfigKdf};
@@ -219,7 +219,7 @@ impl OwnedRegistry<WriteLock> {
                     std::io::ErrorKind::InvalidInput,
                     format!("Not a directory: {:?}", directory_path),
                 )
-                .into())
+                .into());
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 tokio::fs::create_dir_all(&directory_path).await?
@@ -255,7 +255,7 @@ impl OwnedRegistry<WriteLock> {
             .await?;
         }
 
-        let mut csprng = OsRng;
+        let mut csprng = UnwrapErr(SysRng);
 
         // Patch registry config.
         let config = {

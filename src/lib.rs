@@ -1,4 +1,3 @@
-#![feature(array_windows)]
 
 use chrono::DateTime;
 use color_eyre::eyre::OptionExt;
