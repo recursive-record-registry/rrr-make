@@ -26,5 +26,5 @@ prf = "sha256"
 [default_record_parameters.splitting_strategy.fill]
 
 [default_record_parameters.encryption]
-algorithm = "Aes256Gcm"
+algorithm = "Aes256GcmSiv"
 segment_padding_to_bytes = 1024

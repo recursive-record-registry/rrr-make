@@ -72,7 +72,7 @@ async fn new_registry_config() {
         default_record_parameters: OwnedRecordConfigParameters {
             splitting_strategy: SplittingStrategy::Fill {},
             encryption: Some(OwnedRecordConfigEncryption {
-                algorithm: EncryptionAlgorithm::Aes256Gcm,
+                algorithm: EncryptionAlgorithm::Aes256GcmSiv,
                 segment_padding_to_bytes: 1024, // 1 KiB
             }),
         }
