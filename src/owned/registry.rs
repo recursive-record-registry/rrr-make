@@ -6,6 +6,7 @@ use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
 use rrr::record::RecordKey;
 use rrr::registry::{RegistryConfig, RegistryConfigHash, RegistryConfigKdf};
 use rrr::utils::fd_lock::{FileLock, ReadLock, WriteLock};
+use rrr::utils::fs::replace_file;
 use rrr::utils::serde::Secret;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -70,9 +71,6 @@ pub struct OwnedRegistry<L: FileLock> {
 
 impl<L: FileLock> OwnedRegistry<L> {
     const FILE_NAME_CONFIG: &str = "registry.toml";
-    /// The file that a new config is written to, before it replaces the config file.
-    /// Only writers use it, so a fixed name suffices.
-    const FILE_NAME_CONFIG_TEMPORARY: &str = "registry.toml.tmp";
     /// The lock file that synchronizes access to the registry. See [`rrr::utils::fd_lock`].
     const FILE_NAME_LOCK: &str = "registry.lock";
 
@@ -81,17 +79,10 @@ impl<L: FileLock> OwnedRegistry<L> {
         let config_path = Self::get_config_path_from_registry_directory_path(&directory_path);
 
         // Check that this is a registry, before creating a lock file in it.
-        if !tokio::fs::try_exists(&config_path).await? {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("registry config file not found: {}", config_path.display()),
-            )
-            .into());
-        }
-
-        let file_lock = L::lock(Self::get_lock_path_from_registry_directory_path(
-            &directory_path,
-        ))
+        let file_lock = L::lock_if_exists(
+            Self::get_lock_path_from_registry_directory_path(&directory_path),
+            &config_path,
+        )
         .await?;
         let config_string = tokio::fs::read_to_string(&config_path).await?;
         let config = toml::from_str::<OwnedRegistryConfig>(&config_string)?;
@@ -135,14 +126,6 @@ impl<L: FileLock> OwnedRegistry<L> {
 
     fn get_config_path_from_registry_directory_path(directory_path: impl AsRef<Path>) -> PathBuf {
         directory_path.as_ref().join(Self::FILE_NAME_CONFIG)
-    }
-
-    fn get_config_temporary_path_from_registry_directory_path(
-        directory_path: impl AsRef<Path>,
-    ) -> PathBuf {
-        directory_path
-            .as_ref()
-            .join(Self::FILE_NAME_CONFIG_TEMPORARY)
     }
 
     fn get_lock_path_from_registry_directory_path(directory_path: impl AsRef<Path>) -> PathBuf {
@@ -298,57 +281,9 @@ impl OwnedRegistry<WriteLock> {
     /// Atomically replaces the config file with one containing `config_string`.
     /// The caller must hold the write lock.
     async fn write_config_string(directory_path: &Path, config_string: &str) -> Result<()> {
-        // Write the new config to a temporary file, and then rename it over the config file, so
-        // that the config file is never left incomplete, even if writing fails.
-        let temporary_path =
-            Self::get_config_temporary_path_from_registry_directory_path(directory_path);
-
-        if let Err(error) =
-            Self::write_config_string_and_rename(directory_path, &temporary_path, config_string)
-                .await
-        {
-            // Do not leave an incomplete config behind.
-            match tokio::fs::remove_file(&temporary_path).await {
-                Err(remove_error) if remove_error.kind() != std::io::ErrorKind::NotFound => {
-                    tracing::warn!(
-                        ?temporary_path,
-                        %remove_error,
-                        "Failed to remove the temporary config file."
-                    );
-                }
-                _ => {}
-            }
-
-            return Err(error);
-        }
-
-        // Persist the rename. Not possible on Windows, where directories cannot be opened as files.
-        #[cfg(unix)]
-        File::open(directory_path).await?.sync_all().await?;
-
-        Ok(())
-    }
-
-    /// Writes `config_string` to `temporary_path`, and renames it over the config file.
-    /// The temporary file is closed when this returns, so that it can be removed on Windows.
-    async fn write_config_string_and_rename(
-        directory_path: &Path,
-        temporary_path: &Path,
-        config_string: &str,
-    ) -> Result<()> {
-        let mut temporary_file = File::options()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(temporary_path)
-            .await?;
-
-        temporary_file.write_all(config_string.as_bytes()).await?;
-        temporary_file.sync_all().await?;
-        drop(temporary_file);
-        tokio::fs::rename(
-            temporary_path,
+        replace_file(
             Self::get_config_path_from_registry_directory_path(directory_path),
+            async |file| Ok(file.write_all(config_string.as_bytes()).await?),
         )
         .await?;
 

@@ -30,7 +30,7 @@ futures = "0.3.34"
 include_dir = "0.7.4"
 itertools = "0.15.0"
 rand = "0.10.3"
-rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "bd182c6b88ddb45cd1cfa7b9acd242f4956e6916" }
+rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "cada71a8419c370df127456d642dfc0ee6f9ee53" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_bytes = "0.11.19"
 serde_with = "3.24"
