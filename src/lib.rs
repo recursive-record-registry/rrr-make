@@ -65,11 +65,11 @@ pub async fn save_record_versioned<L: FileLock>(
         .map(SegmentEncryption::from);
 
     if let Some(latest_existing_version) = existing_versions.last() {
-        let latest_existing_version_record = Record::read_version_with_nonce(
+        let latest_existing_version_record = Record::read_version_with_collision_index(
             output_registry,
             hashed_key,
             latest_existing_version.record_version,
-            latest_existing_version.record_nonce,
+            latest_existing_version.collision_index,
         )
         .await?
         .ok_or_eyre("Failed to load the latest version of a record.")?;
