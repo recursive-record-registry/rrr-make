@@ -5,18 +5,14 @@ use rand::{rand_core::UnwrapErr, rngs::SysRng};
 use rrr::crypto::signature::{SigningKey, SigningKeyEd25519};
 use rrr::record::RecordKey;
 use rrr::registry::{RegistryConfig, RegistryConfigHash, RegistryConfigKdf};
-use rrr::utils::fd_lock::{FileLock, FileLockType, ReadLock, WriteLock};
+use rrr::utils::fd_lock::{FileLock, ReadLock, WriteLock};
 use rrr::utils::serde::Secret;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::SeekFrom;
 use std::{
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
 };
-use tokio::fs::OpenOptions;
-use tokio::io::AsyncSeekExt;
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -67,30 +63,37 @@ pub struct OwnedRegistry<L: FileLock> {
     pub config: OwnedRegistryConfig,
     /// Keys loaded from files at `config.signing_key_paths`, in the same order.
     pub signing_keys: Vec<SigningKey>,
-    file_lock: L,
+    /// A lock on the registry lock file, held for as long as the registry is loaded.
+    /// Readers hold a shared lock, and writers an exclusive one, so that readers block writers.
+    _file_lock: L,
 }
 
 impl<L: FileLock> OwnedRegistry<L> {
     const FILE_NAME_CONFIG: &str = "registry.toml";
+    /// The file that a new config is written to, before it replaces the config file.
+    /// Only writers use it, so a fixed name suffices.
+    const FILE_NAME_CONFIG_TEMPORARY: &str = "registry.toml.tmp";
+    /// The lock file that synchronizes access to the registry. See [`rrr::utils::fd_lock`].
+    const FILE_NAME_LOCK: &str = "registry.lock";
 
     pub async fn load(directory_path: impl Into<PathBuf>) -> Result<Self> {
         let directory_path = directory_path.into();
         let config_path = Self::get_config_path_from_registry_directory_path(&directory_path);
-        let open_options = {
-            let mut open_options = OpenOptions::new();
-            open_options.read(true);
-            open_options.write(L::TYPE == FileLockType::Write);
-            open_options
-        };
-        let mut file_lock = L::lock(&config_path, &open_options).await?;
-        let config_string = {
-            let mut config_string = String::new();
-            file_lock
-                .file_mut()
-                .read_to_string(&mut config_string)
-                .await?;
-            config_string
-        };
+
+        // Check that this is a registry, before creating a lock file in it.
+        if !tokio::fs::try_exists(&config_path).await? {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("registry config file not found: {}", config_path.display()),
+            )
+            .into());
+        }
+
+        let file_lock = L::lock(Self::get_lock_path_from_registry_directory_path(
+            &directory_path,
+        ))
+        .await?;
+        let config_string = tokio::fs::read_to_string(&config_path).await?;
         let config = toml::from_str::<OwnedRegistryConfig>(&config_string)?;
         let signing_keys = {
             let mut signing_keys = Vec::new();
@@ -115,28 +118,35 @@ impl<L: FileLock> OwnedRegistry<L> {
             config,
             directory_path,
             signing_keys,
-            file_lock,
+            _file_lock: file_lock,
         })
     }
 
-    pub async fn save_config(&mut self) -> Result<()> {
-        let config_string = toml::to_string_pretty(&self.config)?;
+    /// Releases the lock, and loads the registry again with a lock of type `L2`.
+    /// The config and signing keys are reloaded, because another writer may have changed them
+    /// while no lock was held.
+    async fn relock<L2: FileLock>(self) -> Result<OwnedRegistry<L2>> {
+        let directory_path = self.directory_path.clone();
 
-        self.file_lock.file_mut().seek(SeekFrom::Start(0)).await?;
-        self.file_lock
-            .file_mut()
-            .write_all(config_string.as_bytes())
-            .await?;
+        drop(self);
 
-        Ok(())
+        OwnedRegistry::load(directory_path).await
     }
 
     fn get_config_path_from_registry_directory_path(directory_path: impl AsRef<Path>) -> PathBuf {
         directory_path.as_ref().join(Self::FILE_NAME_CONFIG)
     }
 
-    fn get_config_path(&self) -> PathBuf {
-        Self::get_config_path_from_registry_directory_path(&self.directory_path)
+    fn get_config_temporary_path_from_registry_directory_path(
+        directory_path: impl AsRef<Path>,
+    ) -> PathBuf {
+        directory_path
+            .as_ref()
+            .join(Self::FILE_NAME_CONFIG_TEMPORARY)
+    }
+
+    fn get_lock_path_from_registry_directory_path(directory_path: impl AsRef<Path>) -> PathBuf {
+        directory_path.as_ref().join(Self::FILE_NAME_LOCK)
     }
 
     fn get_key_path_from_record_directory_path(
@@ -172,24 +182,10 @@ impl<L: FileLock> OwnedRegistry<L> {
 }
 
 impl OwnedRegistry<ReadLock> {
+    /// Acquires an exclusive lock on the registry.
+    /// The config and signing keys are reloaded, discarding any changes made to them.
     pub async fn lock_write(self) -> Result<OwnedRegistry<WriteLock>> {
-        let config_path = self.get_config_path();
-        let open_options = {
-            let mut open_options = File::options();
-            open_options.read(true);
-            open_options.write(true);
-            open_options.truncate(true);
-            open_options
-        };
-
-        drop(self.file_lock);
-
-        Ok(OwnedRegistry {
-            file_lock: WriteLock::lock(&config_path, &open_options).await?,
-            directory_path: self.directory_path,
-            config: self.config,
-            signing_keys: self.signing_keys,
-        })
+        self.relock().await
     }
 }
 
@@ -229,42 +225,19 @@ impl OwnedRegistry<WriteLock> {
 
         let config_path = Self::get_config_path_from_registry_directory_path(&directory_path);
 
-        // TODO: Unify with save_config
         tokio::fs::create_dir_all(&directory_path).await?;
-        let mut file_lock = {
-            let open_options = {
-                let mut open_options = OpenOptions::new();
-                open_options.read(true);
-                open_options.write(true);
-                open_options.truncate(true);
-                open_options.create(overwrite);
-                open_options.create_new(!overwrite);
-                open_options
-            };
-            WriteLock::lock(&config_path, &open_options).await?
-        };
+        let file_lock = WriteLock::lock(Self::get_lock_path_from_registry_directory_path(
+            &directory_path,
+        ))
+        .await?;
 
-        {
-            let mut lock_map = HashMap::new();
-            lock_map.insert(PathBuf::from(Self::FILE_NAME_CONFIG), &mut file_lock);
-            assets::extract_with_locks(
-                &assets::SOURCE_DIRECTORY_TEMPLATE,
-                &directory_path,
-                &mut lock_map,
-            )
-            .await?;
-        }
+        assets::extract(&assets::SOURCE_DIRECTORY_TEMPLATE, &directory_path).await?;
 
         let mut csprng = UnwrapErr(SysRng);
 
         // Patch registry config.
         let config = {
-            let mut config_string = String::new();
-            file_lock.file_mut().seek(SeekFrom::Start(0)).await?;
-            file_lock
-                .file_mut()
-                .read_to_string(&mut config_string)
-                .await?;
+            let config_string = tokio::fs::read_to_string(&config_path).await?;
             let mut config_doc = config_string.parse::<DocumentMut>()?;
             let root_predecessor_nonce =
                 RegistryConfigKdf::generate_random_root_predecessor_nonce(csprng, None);
@@ -272,17 +245,13 @@ impl OwnedRegistry<WriteLock> {
                 format!("{:02x}", root_predecessor_nonce.iter().format(""));
             config_doc["kdf"]["root_predecessor_nonce"] =
                 toml_edit::value(root_predecessor_nonce_string);
-            config_string = config_doc.to_string();
+            let config_string = config_doc.to_string();
 
             // Parse patched config
             let config = toml::from_str::<OwnedRegistryConfig>(&config_string)?;
 
             // Store patched config
-            file_lock.file_mut().seek(SeekFrom::Start(0)).await?;
-            file_lock
-                .file_mut()
-                .write_all(config_string.as_bytes())
-                .await?;
+            Self::write_config_string(&directory_path, &config_string).await?;
 
             config
         };
@@ -313,28 +282,83 @@ impl OwnedRegistry<WriteLock> {
             directory_path,
             config,
             signing_keys,
-            file_lock,
+            _file_lock: file_lock,
         };
 
         Ok(registry)
     }
 
+    /// Atomically replaces the config file with one containing [`Self::config`].
+    pub async fn save_config(&mut self) -> Result<()> {
+        let config_string = toml::to_string_pretty(&self.config)?;
+
+        Self::write_config_string(&self.directory_path, &config_string).await
+    }
+
+    /// Atomically replaces the config file with one containing `config_string`.
+    /// The caller must hold the write lock.
+    async fn write_config_string(directory_path: &Path, config_string: &str) -> Result<()> {
+        // Write the new config to a temporary file, and then rename it over the config file, so
+        // that the config file is never left incomplete, even if writing fails.
+        let temporary_path =
+            Self::get_config_temporary_path_from_registry_directory_path(directory_path);
+
+        if let Err(error) =
+            Self::write_config_string_and_rename(directory_path, &temporary_path, config_string)
+                .await
+        {
+            // Do not leave an incomplete config behind.
+            match tokio::fs::remove_file(&temporary_path).await {
+                Err(remove_error) if remove_error.kind() != std::io::ErrorKind::NotFound => {
+                    tracing::warn!(
+                        ?temporary_path,
+                        %remove_error,
+                        "Failed to remove the temporary config file."
+                    );
+                }
+                _ => {}
+            }
+
+            return Err(error);
+        }
+
+        // Persist the rename. Not possible on Windows, where directories cannot be opened as files.
+        #[cfg(unix)]
+        File::open(directory_path).await?.sync_all().await?;
+
+        Ok(())
+    }
+
+    /// Writes `config_string` to `temporary_path`, and renames it over the config file.
+    /// The temporary file is closed when this returns, so that it can be removed on Windows.
+    async fn write_config_string_and_rename(
+        directory_path: &Path,
+        temporary_path: &Path,
+        config_string: &str,
+    ) -> Result<()> {
+        let mut temporary_file = File::options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(temporary_path)
+            .await?;
+
+        temporary_file.write_all(config_string.as_bytes()).await?;
+        temporary_file.sync_all().await?;
+        drop(temporary_file);
+        tokio::fs::rename(
+            temporary_path,
+            Self::get_config_path_from_registry_directory_path(directory_path),
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    /// Downgrades to a shared lock on the registry.
+    /// The config and signing keys are reloaded, discarding any unsaved changes made to them.
     pub async fn lock_read(self) -> Result<OwnedRegistry<ReadLock>> {
-        let config_path = self.get_config_path();
-        let open_options = {
-            let mut open_options = File::options();
-            open_options.read(true);
-            open_options
-        };
-
-        drop(self.file_lock);
-
-        Ok(OwnedRegistry {
-            file_lock: ReadLock::lock(&config_path, &open_options).await?,
-            directory_path: self.directory_path,
-            config: self.config,
-            signing_keys: self.signing_keys,
-        })
+        self.relock().await
     }
 }
 
@@ -358,13 +382,13 @@ impl<L: FileLock> PartialEq for OwnedRegistry<L> {
             directory_path: self_directory_path,
             config: self_config,
             signing_keys: self_signing_keys,
-            file_lock: _,
+            _file_lock: _,
         } = self;
         let Self {
             directory_path: other_directory_path,
             config: other_config,
             signing_keys: other_signing_keys,
-            file_lock: _,
+            _file_lock: _,
         } = other;
         self_directory_path == other_directory_path
             && self_config == other_config

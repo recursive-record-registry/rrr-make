@@ -119,3 +119,41 @@ async fn commands_new_make() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+#[traced_test]
+async fn save_config_replaces_config() {
+    let registry_dir = tempdir().unwrap();
+    let mut registry = OwnedRegistry::generate(registry_dir.path(), false)
+        .await
+        .unwrap();
+
+    registry.config.inherit_record_parameters_from_parent =
+        !registry.config.inherit_record_parameters_from_parent;
+    registry.save_config().await.unwrap();
+
+    let expected_config = toml::to_string(&registry.config).unwrap();
+    let registry = registry.lock_read().await.unwrap();
+
+    assert_eq!(toml::to_string(&registry.config).unwrap(), expected_config);
+    assert!(registry_dir.path().join("registry.lock").exists());
+    assert!(!registry_dir.path().join("registry.toml.tmp").exists());
+}
+
+#[tokio::test]
+#[traced_test]
+async fn save_config_removes_temporary_file_on_failure() {
+    let registry_dir = tempdir().unwrap();
+    let mut registry = OwnedRegistry::generate(registry_dir.path(), false)
+        .await
+        .unwrap();
+
+    // Make replacing the config file fail, by putting a directory in its place.
+    let config_path = registry_dir.path().join("registry.toml");
+    std::fs::remove_file(&config_path).unwrap();
+    std::fs::create_dir(&config_path).unwrap();
+
+    registry.save_config().await.unwrap_err();
+
+    assert!(!registry_dir.path().join("registry.toml.tmp").exists());
+}
