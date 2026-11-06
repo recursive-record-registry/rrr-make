@@ -10,9 +10,9 @@ output_length_in_bytes = 32
 
 [hash.algorithm.argon2]
 variant = "argon2id"
-m_cost = 1024
-t_cost = 1024
-p_cost = 1
+m_cost = 2097152
+t_cost = 1
+p_cost = 4
 
 [kdf]
 file_name_length_in_bytes = 8
