@@ -22,15 +22,12 @@ chrono = "0.4.45"
 color-eyre = "0.6.5"
 ed25519-dalek = { version = "3.0", features = ["rand_core", "pem"] }
 futures = "0.3.34"
-# Workaround for a bug in `include_dir` 0.7.4 (the latest release): its `nightly` feature uses
-# `proc_macro` APIs that have since been renamed on nightly Rust, so it no longer compiles.
-# Without that feature, changes to the included assets are tracked by `build.rs` instead.
-# See https://github.com/Michael-F-Bryan/include_dir/issues/118. Once fixed, re-enable
-# `features = ["nightly"]` and remove `build.rs`.
+# `include_dir`'s `nightly` feature, which tracks the included assets, requires nightly Rust.
+# On stable, `build.rs` tracks them instead.
 include_dir = "0.7.4"
 itertools = "0.15.0"
 rand = "0.10.3"
-rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "825f870a06fc21c1c7e5eccdb07fccb08d2b07e7" }
+rrr = { git = "https://github.com/recursive-record-registry/rrr.git", rev = "068966bdaf12f5881f74e037af7b97650e50fa45" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_bytes = "0.11.19"
 serde_with = "3.24"
