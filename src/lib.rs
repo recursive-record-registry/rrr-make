@@ -36,85 +36,76 @@ pub struct MakeRecursiveStatistics {
     pub records_unchanged: usize,
 }
 
-/// If `output_record` differs from the latest version of the record in the `output_registry`, saves
-/// the `output_record` as a new version.
+/// What [`save_record_versioned`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveRecordVersionedOutcome {
+    /// No version of the record was found, so the record was saved as version 0.
+    Created,
+    /// The latest version, `previous`, differed from the record, so the record was saved as the
+    /// next version, `current`.
+    Updated {
+        previous: RecordVersion,
+        current: RecordVersion,
+    },
+    /// The latest version, `version`, was equal to the record, so nothing was saved.
+    Unchanged { version: RecordVersion },
+}
+
+/// If `record` differs from the latest version of the record at `hashed_key` in the `registry`,
+/// saves `record` as a new version.
 ///
-/// The `options` are used both to find the existing versions, and to save the new one.
-pub async fn save_record_versioned<L: FileLock>(
-    output_registry: &mut Registry<WriteLock>,
-    input_registry: &OwnedRegistry<L>,
-    input_record: &OwnedRecord,
-    options: ListRecordVersionsOptions,
-    record_path: &RecordPath,
-    output_record: &Record,
+/// Existing versions are searched with `max_version_lookahead`, and with the
+/// [`SaveRecordOptions::max_collision_resolution_attempts`] of `options`.
+pub async fn save_record_versioned(
+    registry: &mut Registry<WriteLock>,
     hashed_key: &HashedRecordKey,
-    split_at: &[usize],
-    stats: &mut MakeRecursiveStatistics,
-) -> color_eyre::Result<()> {
-    let existing_versions = output_registry
-        .list_record_versions(hashed_key, options)
-        .await?;
-    let encryption = input_record
-        .config
-        .parameters
-        .encryption
-        .as_ref()
-        .map(SegmentEncryption::from);
-    let save_options = SaveRecordOptions {
-        split_at,
-        max_collision_resolution_attempts: options.max_collision_resolution_attempts,
-        ..SaveRecordOptions::new(&input_registry.signing_keys, encryption.as_ref())
-    };
-
-    if let Some(latest_existing_version) = existing_versions.last() {
-        let latest_existing_version_record = Record::read_version_with_collision_index(
-            output_registry,
+    record: &Record,
+    max_version_lookahead: u64,
+    options: SaveRecordOptions<'_>,
+) -> color_eyre::Result<SaveRecordVersionedOutcome> {
+    let existing_versions = registry
+        .list_record_versions(
             hashed_key,
-            latest_existing_version.record_version,
-            latest_existing_version.collision_index,
+            ListRecordVersionsOptions {
+                max_version_lookahead,
+                max_collision_resolution_attempts: options.max_collision_resolution_attempts,
+            },
         )
-        .await?
-        .ok_or_eyre("Failed to load the latest version of a record.")?;
+        .await?;
 
-        if &latest_existing_version_record.record == output_record {
-            debug!(version = %latest_existing_version.record_version.0, %record_path, "Record unchanged, skipping.");
-            stats.records_unchanged += 1;
-        } else {
-            let new_version = RecordVersion(latest_existing_version.record_version.0 + 1);
-
-            debug!(
-                version_previous = latest_existing_version.record_version.0,
-                version_current = new_version.0,
-                %record_path,
-                "Record changed, writing new version."
-            );
-            output_registry
-                .save_record(hashed_key, output_record, new_version, save_options)
-                .await?;
-            stats.records_updated += 1;
-
-            info!(
-                version_previous = latest_existing_version.record_version.0,
-                version_current = new_version.0,
-                %record_path,
-                "New version of record created."
-            );
-        }
-    } else {
-        output_registry
-            .save_record(
-                hashed_key,
-                output_record,
-                0.into(), // This is the first version of the record, as no other versions have been found.
-                save_options,
-            )
+    let Some(latest_existing_version) = existing_versions.last() else {
+        // This is the first version of the record, as no other versions have been found.
+        registry
+            .save_record(hashed_key, record, RecordVersion(0), options)
             .await?;
-        stats.records_created += 1;
 
-        info!(%record_path, "New record created.");
+        return Ok(SaveRecordVersionedOutcome::Created);
+    };
+    let latest_existing_version_record = Record::read_version_with_collision_index(
+        registry,
+        hashed_key,
+        latest_existing_version.record_version,
+        latest_existing_version.collision_index,
+    )
+    .await?
+    .ok_or_eyre("Failed to load the latest version of a record.")?;
+
+    if &latest_existing_version_record.record == record {
+        return Ok(SaveRecordVersionedOutcome::Unchanged {
+            version: latest_existing_version.record_version,
+        });
     }
 
-    Ok(())
+    let new_version = RecordVersion(latest_existing_version.record_version.0 + 1);
+
+    registry
+        .save_record(hashed_key, record, new_version, options)
+        .await?;
+
+    Ok(SaveRecordVersionedOutcome::Updated {
+        previous: latest_existing_version.record_version,
+        current: new_version,
+    })
 }
 
 pub fn make_recursive<'a, L: FileLock>(
@@ -160,19 +151,45 @@ pub fn make_recursive<'a, L: FileLock>(
             RecordPath::try_from(record_path).unwrap()
         };
 
-        save_record_versioned(
+        let encryption = input_record
+            .config
+            .parameters
+            .encryption
+            .as_ref()
+            .map(SegmentEncryption::from);
+        let outcome = save_record_versioned(
             output_registry,
-            input_registry,
-            input_record,
-            options,
-            &record_path,
-            &output_record,
             &hashed_key,
-            // TODO: Handle `SplittingStrategy::Fill`
-            read_result.split_at.as_deref().unwrap_or_default(),
-            stats,
+            &output_record,
+            options.max_version_lookahead,
+            SaveRecordOptions {
+                // TODO: Handle `SplittingStrategy::Fill`
+                split_at: read_result.split_at.as_deref().unwrap_or_default(),
+                max_collision_resolution_attempts: options.max_collision_resolution_attempts,
+                ..SaveRecordOptions::new(&input_registry.signing_keys, encryption.as_ref())
+            },
         )
         .await?;
+
+        match outcome {
+            SaveRecordVersionedOutcome::Created => {
+                stats.records_created += 1;
+                info!(%record_path, "New record created.");
+            }
+            SaveRecordVersionedOutcome::Updated { previous, current } => {
+                stats.records_updated += 1;
+                info!(
+                    version_previous = previous.0,
+                    version_current = current.0,
+                    %record_path,
+                    "New version of record created."
+                );
+            }
+            SaveRecordVersionedOutcome::Unchanged { version } => {
+                stats.records_unchanged += 1;
+                debug!(version = version.0, %record_path, "Record unchanged, skipping.");
+            }
+        }
 
         let succession_nonce = hashed_key
             .derive_succession_nonce(&input_registry.config.kdf)
