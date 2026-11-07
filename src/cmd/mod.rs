@@ -4,6 +4,7 @@ use crate::{make_recursive, registry::OwnedRegistry, MakeRecursiveStatistics};
 use clap::Parser;
 use color_eyre::eyre::Result;
 use rrr::{
+    record::ListRecordVersionsOptions,
     registry::{Registry, RegistryConfig},
     utils::fd_lock::WriteLock,
 };
@@ -68,8 +69,7 @@ impl Command {
                     &input_registry,
                     &input_root_record,
                     &root_predecessor_nonce,
-                    0, // TODO
-                    0, // TODO
+                    ListRecordVersionsOptions::default(),
                     &mut Vec::new(),
                     &mut stats,
                 )

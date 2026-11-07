@@ -7,8 +7,8 @@ use registry::OwnedRegistry;
 use rrr::{
     record::{
         segment::{RecordVersion, SegmentEncryption},
-        HashedRecordKey, Record, RecordKey, RecordMetadata, RecordName, RecordPath,
-        SuccessionNonce,
+        HashedRecordKey, ListRecordVersionsOptions, Record, RecordKey, RecordMetadata, RecordName,
+        RecordPath, SaveRecordOptions, SuccessionNonce,
     },
     registry::Registry,
     utils::{
@@ -38,12 +38,13 @@ pub struct MakeRecursiveStatistics {
 
 /// If `output_record` differs from the latest version of the record in the `output_registry`, saves
 /// the `output_record` as a new version.
+///
+/// The `options` are used both to find the existing versions, and to save the new one.
 pub async fn save_record_versioned<L: FileLock>(
     output_registry: &mut Registry<WriteLock>,
     input_registry: &OwnedRegistry<L>,
     input_record: &OwnedRecord,
-    max_version_lookahead: u64,
-    max_collision_resolution_attempts: u64,
+    options: ListRecordVersionsOptions,
     record_path: &RecordPath,
     output_record: &Record,
     hashed_key: &HashedRecordKey,
@@ -51,11 +52,7 @@ pub async fn save_record_versioned<L: FileLock>(
     stats: &mut MakeRecursiveStatistics,
 ) -> color_eyre::Result<()> {
     let existing_versions = output_registry
-        .list_record_versions(
-            hashed_key,
-            max_version_lookahead,
-            max_collision_resolution_attempts,
-        )
+        .list_record_versions(hashed_key, options)
         .await?;
     let encryption = input_record
         .config
@@ -63,6 +60,11 @@ pub async fn save_record_versioned<L: FileLock>(
         .encryption
         .as_ref()
         .map(SegmentEncryption::from);
+    let save_options = SaveRecordOptions {
+        split_at,
+        max_collision_resolution_attempts: options.max_collision_resolution_attempts,
+        ..SaveRecordOptions::new(&input_registry.signing_keys, encryption.as_ref())
+    };
 
     if let Some(latest_existing_version) = existing_versions.last() {
         let latest_existing_version_record = Record::read_version_with_collision_index(
@@ -87,16 +89,7 @@ pub async fn save_record_versioned<L: FileLock>(
                 "Record changed, writing new version."
             );
             output_registry
-                .save_record(
-                    &input_registry.signing_keys,
-                    hashed_key,
-                    output_record,
-                    new_version,
-                    max_collision_resolution_attempts,
-                    split_at,
-                    encryption.as_ref(),
-                    false,
-                )
+                .save_record(hashed_key, output_record, new_version, save_options)
                 .await?;
             stats.records_updated += 1;
 
@@ -110,14 +103,10 @@ pub async fn save_record_versioned<L: FileLock>(
     } else {
         output_registry
             .save_record(
-                &input_registry.signing_keys,
                 hashed_key,
                 output_record,
                 0.into(), // This is the first version of the record, as no other versions have been found.
-                max_collision_resolution_attempts,
-                split_at,
-                encryption.as_ref(),
-                false,
+                save_options,
             )
             .await?;
         stats.records_created += 1;
@@ -133,8 +122,7 @@ pub fn make_recursive<'a, L: FileLock>(
     input_registry: &'a OwnedRegistry<L>,
     input_record: &'a OwnedRecord,
     predecessor_nonce: &'a SuccessionNonce,
-    max_version_lookahead: u64,
-    max_collision_resolution_attempts: u64,
+    options: ListRecordVersionsOptions,
     // Record path excluding the `input_record`.
     path_to_parent_record: &'a mut Vec<RecordName>,
     stats: &'a mut MakeRecursiveStatistics,
@@ -176,8 +164,7 @@ pub fn make_recursive<'a, L: FileLock>(
             output_registry,
             input_registry,
             input_record,
-            max_version_lookahead,
-            max_collision_resolution_attempts,
+            options,
             &record_path,
             &output_record,
             &hashed_key,
@@ -200,8 +187,7 @@ pub fn make_recursive<'a, L: FileLock>(
                     input_registry,
                     successive_record,
                     &succession_nonce,
-                    max_version_lookahead,
-                    max_collision_resolution_attempts,
+                    options,
                     path_to_parent_record,
                     stats,
                 )
